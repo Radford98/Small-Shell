@@ -22,9 +22,14 @@ void main() {
 	size_t buffer = 0;	// Size of allocated buffer
 	char* command = NULL;	// Entered string + \n + \0 
 
+	// Variables storing arguments
 	char* argArr[512];	// Array for arguments, maximum number of arguments is 512
 	int numArgs;		// Holds the number of arguments
 
+	// Variables for status command
+	int	exitStatus = 0,
+		termSignal = 0;
+	
 while(1) {	// Keep asking for commands until exit
 	// Display command prompt and wait for the user
 	printf(": ");
@@ -46,14 +51,17 @@ while(1) {	// Keep asking for commands until exit
 		return;
 	} else if (strcmp(argArr[0], "cd") == 0) {
 		// Implement cd
-	} else if (strcmp(argArr[0], "status") == 0) {
-		// Implement status
+	} else if (strcmp(argArr[0], "status") == 0) {		// Print the status of last foreground process
+		if (termSignal == 0) {
+			printf("exit value %d\n", exitStatus);
+		} else {
+			printf("terminated by signal %d\n", termSignal);
+		}
 	} else { // Run whatever command came through
 		for (int i = 0; i < numArgs; i++) {
 			printf("Argument %d: %s\n", i, argArr[i]);
 		}
 		printf("Total arguments: %d\n", numArgs);
-
 	}
 
 	free(command);
