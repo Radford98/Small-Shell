@@ -60,18 +60,26 @@ while(1) {	// Keep asking for commands until exit
 		
 		if (dirErr == -1) {
 			printf("Could not find the directory.\n");
+			fflush(stdout);
 		} 
 	} else if (strcmp(argArr[0], "status") == 0) {		// Print the status of last foreground process
 		if (termSignal == 0) {
 			printf("exit value %d\n", exitStatus);
+			fflush(stdout);
 		} else {
 			printf("terminated by signal %d\n", termSignal);
+			fflush(stdout);
 		}
-	} else { // Run whatever command came through
+	} else {
+		// Run whatever command came through
 		for (int i = 0; i < numArgs; i++) {
 			printf("Argument %d: %s\n", i, argArr[i]);
 		}
 		printf("Total arguments: %d\n", numArgs);
+		fflush(stdout);
+		
+		
+
 	}
 
 	free(command);
