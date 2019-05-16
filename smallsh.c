@@ -50,7 +50,17 @@ while(1) {	// Keep asking for commands until exit
 		// Implement exit (kill processes)
 		return;
 	} else if (strcmp(argArr[0], "cd") == 0) {
-		// Implement cd
+		int dirErr;
+		// If cd is used by itself, change to the HOME directory
+		if (numArgs == 1) {
+			dirErr = chdir(getenv("HOME"));
+		} else {	// Otherwise, change to the directory passed to it.
+			dirErr = chdir(argArr[1]);	// cd only accepts one argument, so cd to that
+		}
+		
+		if (dirErr == -1) {
+			printf("Could not find the directory.\n");
+		} 
 	} else if (strcmp(argArr[0], "status") == 0) {		// Print the status of last foreground process
 		if (termSignal == 0) {
 			printf("exit value %d\n", exitStatus);
