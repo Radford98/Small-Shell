@@ -25,12 +25,14 @@ void main() {
 	char delim[] = " ";	// Deliminater for strtok
 	int numArgs;		// Holds the number of arguments
 
-//while(1) {	// Keep asking for commands until exit
+while(1) {	// Keep asking for commands until exit
 	// Display command prompt and wait for the user
 	printf(": ");
 	fflush(stdout);
 	
 	numEnt = getline(&command, &buffer, stdin);
+	if (numEnt == 1)	// Ignore empty command
+		continue;
 	// Remove newline from command
 	command[strcspn(command, "\n")] = '\0';
 	strcpy(tokenize, command);
@@ -81,5 +83,6 @@ void main() {
 
 	free(command);
 	command = NULL;
-//}
+}
+	return;
 }
