@@ -5,7 +5,7 @@
  * handles some signals.
  */
 
-#define _POSIX_C_SOURCE 200809L		// Header declaration for getline
+#define _POSIX_C_SOURCE 200809L		// Header declaration for getline... apparently.
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -35,6 +35,7 @@ void main() {
 	// Variables for fork
 	pid_t spawnid = -5;
 	int childExitMethod = -5;
+	int redInd = 0;
 	
 while(1) {	// Keep asking for commands until exit
 	// Display command prompt and wait for the user
@@ -85,6 +86,41 @@ while(1) {	// Keep asking for commands until exit
 				exit(1);
 				break;
 			case 0:	// Child process
+
+				/*
+ 				Check for redirection. strrchr locates the last occurence of a redirection
+				character (incase they're used incidientally in argument names) and,
+				after some pointer arithmatic,  verifies that it's a separate word by
+				checking the chars before and after it. Then, pull the actual destination/source
+				from the command string.
+				Commences redirection.
+				*/
+
+				if (strrchr(command, '<') != NULL) {
+					redInd = strrchr(command, '<') - command;
+					if (command[redInd-1] == ' ' && command[redInd+1] == ' ') {
+						char input[100];	// New string for redirection
+						memset(input, '\0', sizeof(input));
+						int i = redInd+2;		// Tracking index
+						while (command[i] != ' ' && command[i] != '\0') {
+							input[strlen(input)] = command[i];
+							i++;
+						}		
+printf("input: %s\n", input);
+						
+						int srcFD = open(input, O_RDONLY);
+						if (srcFD == -1) {
+							printf("File not found\n");
+							exit(1);
+						}
+						dup2(srcFD, 0);	// Redirect stdin to the specified file.
+						
+
+					}
+
+
+				}
+				// Run exec
 				execvp(argArr[0], argArr);
 				printf("Error, command not found.\n");
 				exit(1);
