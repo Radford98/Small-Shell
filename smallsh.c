@@ -40,7 +40,6 @@ void main() {
 
 	// Variables for file redirection
 	char fileName[100];
-	memset(fileName, '\0', sizeof(fileName));
 
 while(1) {	// Keep asking for commands until exit
 	// Display command prompt and wait for the user
@@ -101,6 +100,7 @@ while(1) {	// Keep asking for commands until exit
 				Commences redirection.
 				*/
 
+				// Check for input
 				if (strrchr(command, '<') != NULL) {
 					redInd = strrchr(command, '<') - command;
 					if (command[redInd-1] == ' ' && command[redInd+1] == ' ') {
@@ -112,13 +112,25 @@ while(1) {	// Keep asking for commands until exit
 							exit(1);
 						}
 						dup2(srcFD, 0);	// Redirect stdin to the specified file.
-
-
-
 					}
-
-
 				}
+
+				// Check for output
+				if (strrchr(command, '>') != NULL) {
+					redInd = strrchr(command, '>') - command;
+					if (command[redInd-1] == ' ' && command[redInd+1] == ' ') {
+						RedirectFile(command, fileName, redInd);
+
+						int destFD = open(fileName, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+						if (destFD == -1) {
+							printf("Error writing file\n");
+							exit(1);
+						}
+						dup2(destFD, 1);
+					}
+				}
+
+
 				// Run exec
 				execvp(argArr[0], argArr);
 				printf("Error, command not found.\n");
@@ -178,7 +190,7 @@ int ParseArgs(char** array, char* parseMe) {
 // This function accepts the command line and the index of the redirection symbol and returns
 // the file name that the shell needs to redirect to.						
 void RedirectFile(char* command, char*fileName, int i) {
-
+	memset(fileName, '\0', sizeof(fileName));	// Reset filename
 	i += 2;	// Sets the index to the first character of the file name (skipping over the space)
 	// This loop builds up the string.
 	while (command[i] != ' ' && command[i] != '\0') {
