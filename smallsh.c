@@ -17,6 +17,7 @@
 
 
 int ParseArgs(char**, char*);	// Accepts array for arguments and string to parse; Returns number of arguments
+void RedirectFile(char*, char*, int);	// Parses the file name for redirection.
 
 void main() {
 	// Variables for getting user input
@@ -36,7 +37,11 @@ void main() {
 	pid_t spawnid = -5;
 	int childExitMethod = -5;
 	int redInd = 0;
-	
+
+	// Variables for file redirection
+	char fileName[100];
+	memset(fileName, '\0', sizeof(fileName));
+
 while(1) {	// Keep asking for commands until exit
 	// Display command prompt and wait for the user
 	printf(": ");
@@ -99,22 +104,16 @@ while(1) {	// Keep asking for commands until exit
 				if (strrchr(command, '<') != NULL) {
 					redInd = strrchr(command, '<') - command;
 					if (command[redInd-1] == ' ' && command[redInd+1] == ' ') {
-						char input[100];	// New string for redirection
-						memset(input, '\0', sizeof(input));
-						int i = redInd+2;		// Tracking index
-						while (command[i] != ' ' && command[i] != '\0') {
-							input[strlen(input)] = command[i];
-							i++;
-						}		
-printf("input: %s\n", input);
-						
-						int srcFD = open(input, O_RDONLY);
+						RedirectFile(command, fileName, redInd);
+
+						int srcFD = open(fileName, O_RDONLY);
 						if (srcFD == -1) {
 							printf("File not found\n");
 							exit(1);
 						}
 						dup2(srcFD, 0);	// Redirect stdin to the specified file.
-						
+
+
 
 					}
 
@@ -176,3 +175,14 @@ int ParseArgs(char** array, char* parseMe) {
 	return args;
 }
 
+// This function accepts the command line and the index of the redirection symbol and returns
+// the file name that the shell needs to redirect to.						
+void RedirectFile(char* command, char*fileName, int i) {
+
+	i += 2;	// Sets the index to the first character of the file name (skipping over the space)
+	// This loop builds up the string.
+	while (command[i] != ' ' && command[i] != '\0') {
+		fileName[strlen(fileName)] = command[i];
+		i++;
+	}
+}
