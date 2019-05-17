@@ -12,7 +12,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <signal.h>
+
 
 int ParseArgs(char**, char*);	// Accepts array for arguments and string to parse; Returns number of arguments
 
@@ -29,6 +31,10 @@ void main() {
 	// Variables for status command
 	int	exitStatus = 0,
 		termSignal = 0;
+
+	// Variables for fork
+	pid_t fgId = -5;
+	int childExitMethod = -5;
 	
 while(1) {	// Keep asking for commands until exit
 	// Display command prompt and wait for the user
@@ -72,18 +78,49 @@ while(1) {	// Keep asking for commands until exit
 		}
 	} else {
 		// Run whatever command came through
-		for (int i = 0; i < numArgs; i++) {
+/*		for (int i = 0; i < numArgs; i++) {
 			printf("Argument %d: %s\n", i, argArr[i]);
 		}
 		printf("Total arguments: %d\n", numArgs);
 		fflush(stdout);
-		
-		
+*/		
 
+		// Check if running the process in foreground or background
+		// If the final character is a & and the character before that is a space (meaning it
+		// wasn't incidental to the name of the previous argument), it goes in the background.
+		// Else it runs in the foreground
+		if (command[numEnt-2] == '&' && command[numEnt-3] == ' ') {
+			printf("To run in background.\n");
+			fflush(stdout);
+		} else {
+
+			fgId = fork();
+			switch (fgId) {
+				case -1:
+					perror("Fork failed");
+					exit(1);
+					break;
+				case 0:	// Child process
+					execvp(argArr[0], argArr);
+					printf("Error, command not found.\n");
+					exit(1);
+					break;
+				default:
+					waitpid(fgId, &childExitMethod, 0);
+					if(WIFEXITED(childExitMethod)){
+						exitStatus = WEXITSTATUS(childExitMethod);
+						termSignal = 0;	// Wasn't terminated, must be 0 for status switch
+					} else {
+						termSignal = WTERMSIG(childExitMethod);
+					}
+					break;
+			}
+		}
 	}
 
 	free(command);
 	command = NULL;
+	
 }
 	return;
 }
@@ -106,5 +143,8 @@ int ParseArgs(char** array, char* parseMe) {
 		array[args] = strtok(NULL, delim);
 	}
 
+	array[args] = NULL;	// Set the last element in the array to NULL for exec...()
+
 	return args;
 }
+
