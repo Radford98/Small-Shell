@@ -17,13 +17,21 @@
 
 
 int ParseArgs(char**, char*);	// Accepts array for arguments and string to parse; Returns number of arguments
-void RedirectFile(char*, char*, int);	// Parses the file name for redirection.
+void RedirectFile(char*, char[], int);	// Parses the file name for redirection.
 
 void main() {
 	// Variables for getting user input
 	int numEnt = -5;	// Number of characters entered
 	size_t buffer = 0;	// Size of allocated buffer
 	char* command = NULL;	// Entered string + \n + \0 
+	int freed;		// Tracks if command has been freed (in the case of expanding $$)
+
+	// Variables for expanding $$
+	char newCmd[2058];	// New command, max size of input plus space for PID
+	char pid[10];		// Stringified PID
+	sprintf(pid, "%d", getpid());	// Convert pid into a string
+	int pidLoc;		// Index of $$ in command
+	char* pidPtr;		// Pointer to $$ in command
 
 	// Variables storing arguments
 	char* argArr[512];	// Array for arguments, maximum number of arguments is 512
@@ -42,6 +50,7 @@ void main() {
 	char fileName[100];
 
 while(1) {	// Keep asking for commands until exit
+	freed = 0;	// Command starts unfreed
 	// Display command prompt and wait for the user
 	printf(": ");
 	fflush(stdout);
@@ -52,6 +61,28 @@ while(1) {	// Keep asking for commands until exit
 		continue;
 	// Remove newline from command
 	command[strcspn(command, "\n")] = '\0';
+
+	// Expand $$ to PID
+	pidPtr = strstr(command, "$$");
+	while (pidPtr != NULL) {
+		strcpy(newCmd, command);	// Copy the command string into a larger string for editing
+		pidLoc = pidPtr - command;	// Index for $$
+		// memmove copies bytes - in this case to move bytes further down the string.
+		// It moves everything after the $$ down to make room for the PID.
+		memmove(&newCmd[pidLoc+strlen(pid)], &newCmd[pidLoc+2], numEnt-pidLoc-2);
+
+		strncpy(&newCmd[pidLoc], pid, strlen(pid));	// Insert PID into newCmd
+
+		if (freed == 0) {	// Free allocated command if it hasn't been already
+			free(command);
+			freed = 1;
+		}
+
+		command = newCmd;
+		numEnt = numEnt+strlen(pid)-2;	// The number of characters has increase by PID, but $$ was removed
+		pidPtr = strstr(command, "$$");
+	}
+
 
 	// Parse commandline
 	numArgs = ParseArgs(argArr, command);
@@ -99,8 +130,8 @@ while(1) {	// Keep asking for commands until exit
 				from the command string.
 				Commences redirection.
 				*/
-
-				// Check for input
+				
+				// Check for input redirection
 				if (strrchr(command, '<') != NULL) {
 					redInd = strrchr(command, '<') - command;
 					if (command[redInd-1] == ' ' && command[redInd+1] == ' ') {
@@ -115,7 +146,7 @@ while(1) {	// Keep asking for commands until exit
 					}
 				}
 
-				// Check for output
+				// Check for output redirection
 				if (strrchr(command, '>') != NULL) {
 					redInd = strrchr(command, '>') - command;
 					if (command[redInd-1] == ' ' && command[redInd+1] == ' ') {
@@ -156,10 +187,10 @@ while(1) {	// Keep asking for commands until exit
 		}
 		
 	}
-
-	free(command);
-	command = NULL;
-	
+	if (freed == 0) {
+		free(command);
+	}
+	command = NULL;	
 }
 	return;
 }
@@ -189,8 +220,8 @@ int ParseArgs(char** array, char* parseMe) {
 
 // This function accepts the command line and the index of the redirection symbol and returns
 // the file name that the shell needs to redirect to.						
-void RedirectFile(char* command, char*fileName, int i) {
-	memset(fileName, '\0', sizeof(fileName));	// Reset filename
+void RedirectFile(char* command, char fileName[], int i) {
+	memset(fileName, '\0', 100);	// Reset filename
 	i += 2;	// Sets the index to the first character of the file name (skipping over the space)
 	// This loop builds up the string.
 	while (command[i] != ' ' && command[i] != '\0') {
