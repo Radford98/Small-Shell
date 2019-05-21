@@ -15,6 +15,8 @@
 #include <sys/wait.h>
 #include <signal.h>
 
+// Global variables for SIGTSTP handling
+int waiting = 0, sigRec = 0, fgOnly = 0;
 
 int ParseArgs(char**, char*);		// Accepts array for arguments and string to parse; Returns number of args
 void RedirectFile(char*, char[], int);	// Parses the file name for redirection.
@@ -59,7 +61,7 @@ void main() {
 
 	SIGTSTP_action.sa_handler = catchSIGTSTP;
 	sigfillset(&SIGTSTP_action.sa_mask);
-	SIGTSTP_action.sa_flags = 0;
+	SIGTSTP_action.sa_flags = SA_RESTART; // If this comes during a wait, resuming waiting
 
 	// Parent ignores SIGINT and handles terminated foreground child with childExitMethod
 	sigaction(SIGINT, &ignore_action, NULL);
@@ -68,6 +70,7 @@ void main() {
 while(1) {	// Keep asking for commands until exit
 	freed = 0;	// Command starts unfreed
 	spawnid = -5;	// No foreground processes (used with signal handling)
+
 
 	// Check for background children for reaping.
 	numBG = ReapChildren(pidArr, numBG); 
@@ -134,14 +137,15 @@ while(1) {	// Keep asking for commands until exit
 		// Run whatever command came through
 
 		/* First check if the process is in the foreground or background
-		 If the final char is not & or there isn't a space before it (making
-		 it a separate word), it runs in the foreground.	*/
-		if (command[numEnt-2] != '&' || command[numEnt-3] != ' ') {
-			bg = 0;
-		} else {
+		The final character must be an & and the char in front of it must be a space
+		for it to be a background command. Also, the shell must not be running ing
+		foreground-only mode.	*/
+
+		if (command[numEnt-2] == '&' && command[numEnt-3] == ' ' && fgOnly == 0) {
 			bg = 1;
-		}				
-	
+		} else {
+			bg = 0;
+		}
 
 		spawnid = fork();
 		switch (spawnid) {
@@ -220,6 +224,7 @@ while(1) {	// Keep asking for commands until exit
 				// Wait if it runs in the foreground.
 				// Print the process id if it's in the background and add to bgpid array
 				if (bg == 0) {
+					waiting = 1;	// Set to ignore SIGTSTP until fg child is finished
 					waitpid(spawnid, &childExitMethod, 0);
 					if(WIFEXITED(childExitMethod)){
 						exitStatus = WEXITSTATUS(childExitMethod);
@@ -228,6 +233,11 @@ while(1) {	// Keep asking for commands until exit
 						termSignal = WTERMSIG(childExitMethod);
 						printf("(Normal Wait) terminated by signal %d\n", termSignal);
 						fflush(stdout);
+					}
+					waiting = 0;	// Finished waiting
+					if (sigRec == 1) {
+						sigRec = 0;	// Reset now that the signal is received
+						raise(24);	// Resend TSTP
 					}
 				} else {	// Child is in the background, keep going.
 					// Add child PID to array of child PIDs
@@ -366,6 +376,25 @@ int ReapChildren(pid_t pidArr[], int numBG) {
 }
 
 void catchSIGTSTP(int signo) {
+	// Handle fg waiting
+	if (waiting == 1) {
+		sigRec = 1;	// Let the main know TSTP was sent
+	} else {
+		// Change between normal and foreground only
+		if (fgOnly == 0) {
+			fgOnly = 1;
+			char* message = "Entering foreground-only mode (& is now ignored)\n: ";
+			write(STDOUT_FILENO, message, 51);
+		} else {
+			fgOnly = 0;
+			char* message = "Exiting foreground-only mode\n: ";
+			write(STDOUT_FILENO, message, 31);
+		}
+
+
+	}
+
+
 
 }
 
