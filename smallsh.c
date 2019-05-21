@@ -16,8 +16,9 @@
 #include <signal.h>
 
 
-int ParseArgs(char**, char*);	// Accepts array for arguments and string to parse; Returns number of arguments
+int ParseArgs(char**, char*);		// Accepts array for arguments and string to parse; Returns number of args
 void RedirectFile(char*, char[], int);	// Parses the file name for redirection.
+void ExpandPID(char**, char*, int*);	// Function to expand $$ to PID
 
 void main() {
 	// Variables for getting user input
@@ -26,12 +27,8 @@ void main() {
 	char* command = NULL;	// Entered string + \n + \0 
 	int freed;		// Tracks if command has been freed (in the case of expanding $$)
 
-	// Variables for expanding $$
+	// Variable for expanding $$,
 	char newCmd[2058];	// New command, max size of input plus space for PID
-	char pid[10];		// Stringified PID
-	sprintf(pid, "%d", getpid());	// Convert pid into a string
-	int pidLoc;		// Index of $$ in command
-	char* pidPtr;		// Pointer to $$ in command
 
 	// Variables storing arguments
 	char* argArr[512];	// Array for arguments, maximum number of arguments is 512
@@ -63,26 +60,10 @@ while(1) {	// Keep asking for commands until exit
 	command[strcspn(command, "\n")] = '\0';
 
 	// Expand $$ to PID
-	pidPtr = strstr(command, "$$");
-	while (pidPtr != NULL) {
-		strcpy(newCmd, command);	// Copy the command string into a larger string for editing
-		pidLoc = pidPtr - command;	// Index for $$
-		// memmove copies bytes - in this case to move bytes further down the string.
-		// It moves everything after the $$ down to make room for the PID.
-		memmove(&newCmd[pidLoc+strlen(pid)], &newCmd[pidLoc+2], numEnt-pidLoc-2);
-
-		strncpy(&newCmd[pidLoc], pid, strlen(pid));	// Insert PID into newCmd
-
-		if (freed == 0) {	// Free allocated command if it hasn't been already
-			free(command);
-			freed = 1;
-		}
-
-		command = newCmd;
-		numEnt = numEnt+strlen(pid)-2;	// The number of characters has increase by PID, but $$ was removed
-		pidPtr = strstr(command, "$$");
+	if (strstr(command, "$$") != NULL) {
+		ExpandPID(&command, newCmd, &numEnt);
+		freed = 1;	// if the above function runs even once, command was already freed.
 	}
-
 
 	// Parse commandline
 	numArgs = ParseArgs(argArr, command);
@@ -227,5 +208,42 @@ void RedirectFile(char* command, char fileName[], int i) {
 	while (command[i] != ' ' && command[i] != '\0') {
 		fileName[strlen(fileName)] = command[i];
 		i++;
+	}
+}
+
+/* This function accepts the original command line, an array to hold the expanded command, and the address
+ * of the int to track the length of the command. After the function runs, command has been freed and now points
+ * to the same address as newCmd, so 'command' can be used in the rest of the program regardless if this
+ * function needs to run or not. The int tracking the length of the command is updated to the new length.
+ * NOTE: Since the value of command is being changed (not just the value it points to), this function needs
+ * its address and works through dereferencing.
+ */
+void ExpandPID(char** command, char* newCmd, int* numEnt){
+	char pid[10];			// Stringified PID
+	sprintf(pid, "%d", getpid());	// Convert pid into a string
+	int pidLoc;			// Index of $$ in command
+	char* pidPtr;			// Pointer to $$ in command
+	int f = 0;			// Internal 'freed' variable so command isn't freed multiple times.
+
+	pidPtr = strstr(*command, "$$");
+	while (pidPtr != NULL) {
+		strcpy(newCmd, *command);	// Copy the command string into a larger string for editing
+		pidLoc = pidPtr - *command;	// Index for $$
+		// memmove copies bytes - in this case to move bytes further down the string.
+		// It moves everything after the $$ down to make room for the PID.
+		memmove(&newCmd[pidLoc+strlen(pid)], &newCmd[pidLoc+2], *numEnt-pidLoc-2);
+
+		strncpy(&newCmd[pidLoc], pid, strlen(pid));	// Insert PID into newCmd
+
+		if (f == 0) {	// Free allocated command if it hasn't been already
+			free(*command);
+			f = 1;
+		}
+
+		*command = newCmd;
+		// The number of characters has increase by PID, but $$ was removed
+
+		*numEnt = *numEnt+strlen(pid)-2;
+		pidPtr = strstr(*command, "$$");
 	}
 }
