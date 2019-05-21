@@ -19,6 +19,7 @@
 int ParseArgs(char**, char*);		// Accepts array for arguments and string to parse; Returns number of args
 void RedirectFile(char*, char[], int);	// Parses the file name for redirection.
 void ExpandPID(char**, char*, int*);	// Function to expand $$ to PID
+int ReapChildren(pid_t[], int);		// Waits for background processes
 
 void main() {
 	// Variables for getting user input
@@ -53,35 +54,7 @@ while(1) {	// Keep asking for commands until exit
 	freed = 0;	// Command starts unfreed
 
 	// Check for background children for reaping.
-	for (int i = 0; i < numBG; i++){
-		pid_t reap = waitpid(pidArr[i], &childExitMethod, WNOHANG);
-
-		if (reap != 0) {
-			// Print beginning of background message
-			printf("background pid %d is done: ", reap);
-			fflush(stdout);
-
-			// Retrieve exitStatus/termSignal and print results.
-			if(WIFEXITED(childExitMethod)) {
-				exitStatus = WEXITSTATUS(childExitMethod);
-				termSignal = 0;
-				printf("exit value %d\n", exitStatus);
-				fflush(stdout);
-			} else {
-				termSignal = WTERMSIG(childExitMethod);
-				printf("terminated by signal %d\n", termSignal);
-				fflush(stdout);
-			}
-		
-			// We no longer need to hold on to that pid. The last pid is copied into this pid's location,
-			// then numBG is decremented (so the same pid isn't checked twice).
-			// i is also decremented so it checks the current index again
-			// (because the new pid here might also need to be reaped).
-			pidArr[i] = pidArr[numBG-1];
-			numBG--;
-			i--;
-		}
-	}
+	numBG = ReapChildren(pidArr, numBG); 
 
 	// Display command prompt and wait for the user
 	printf(": ");
@@ -310,3 +283,48 @@ void ExpandPID(char** command, char* newCmd, int* numEnt){
 		pidPtr = strstr(*command, "$$");
 	}
 }
+
+/* ReapChildren accepts an array of background pids and an int tracking the number of pids in that array.
+ * It loops through the array, waiting (no hang) on each one in turn and lets the user know if any
+ * children have been reaped.
+ * Also manages its array to get rid of values it no longer needs to track.
+ * Returns the new number of pids in the array.
+ */
+int ReapChildren(pid_t pidArr[], int numBG) {
+	pid_t reap;
+	int childExitMethod;
+	int deathNum;
+
+	for (int i = 0; i < numBG; i++){
+		reap = waitpid(pidArr[i], &childExitMethod, WNOHANG);
+
+		if (reap != 0) {
+			// Print beginning of background message
+			printf("background pid %d is done: ", reap);
+			fflush(stdout);
+
+			// Retrieve exitStatus/termSignal and print results.
+			if(WIFEXITED(childExitMethod)) {
+				deathNum = WEXITSTATUS(childExitMethod);
+				printf("exit value %d\n", deathNum);
+				fflush(stdout);
+			} else {
+				deathNum = WTERMSIG(childExitMethod);
+				printf("terminated by signal %d\n", deathNum);
+				fflush(stdout);
+			}
+		
+			// We no longer need to hold on to that pid. The last pid is copied into this pid's location,
+			// then numBG is decremented (so the same pid isn't checked twice).
+			// i is also decremented so it checks the current index again
+			// (because the new pid here might also need to be reaped).
+			pidArr[i] = pidArr[numBG-1];
+			numBG--;
+			i--;
+		}
+	}
+
+	return numBG;	// Return the new number of background pids in array.
+}
+
+
