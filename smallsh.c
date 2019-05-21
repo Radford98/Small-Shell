@@ -42,12 +42,47 @@ void main() {
 	pid_t spawnid = -5;
 	int childExitMethod = -5;
 	int redInd = 0;
+	int bg = 0;		// 'bool' for running background processes
+	pid_t pidArr[20];	// Array to hold background PIDs
+	int numBG = 0;		// Int to keep track of number of bg processes
 
 	// Variables for file redirection
 	char fileName[100];
 
 while(1) {	// Keep asking for commands until exit
 	freed = 0;	// Command starts unfreed
+
+	// Check for background children for reaping.
+	for (int i = 0; i < numBG; i++){
+		pid_t reap = waitpid(pidArr[i], &childExitMethod, WNOHANG);
+
+		if (reap != 0) {
+			// Print beginning of background message
+			printf("background pid %d is done: ", reap);
+			fflush(stdout);
+
+			// Retrieve exitStatus/termSignal and print results.
+			if(WIFEXITED(childExitMethod)) {
+				exitStatus = WEXITSTATUS(childExitMethod);
+				termSignal = 0;
+				printf("exit value %d\n", exitStatus);
+				fflush(stdout);
+			} else {
+				termSignal = WTERMSIG(childExitMethod);
+				printf("terminated by signal %d\n", termSignal);
+				fflush(stdout);
+			}
+		
+			// We no longer need to hold on to that pid. The last pid is copied into this pid's location,
+			// then numBG is decremented (so the same pid isn't checked twice).
+			// i is also decremented so it checks the current index again
+			// (because the new pid here might also need to be reaped).
+			pidArr[i] = pidArr[numBG-1];
+			numBG--;
+			i--;
+		}
+	}
+
 	// Display command prompt and wait for the user
 	printf(": ");
 	fflush(stdout);
@@ -70,7 +105,10 @@ while(1) {	// Keep asking for commands until exit
 
 	// Check for built in commands
 	if (strcmp(argArr[0], "exit") == 0) {
-		// Implement exit (kill processes)
+		// kill all children
+		for (int i = 0; i < numBG; i++) {
+			kill(pidArr[i], SIGKILL);
+		}
 		return;
 	} else if (strcmp(argArr[0], "cd") == 0) {
 		int dirErr;
@@ -95,6 +133,17 @@ while(1) {	// Keep asking for commands until exit
 		}
 	} else {
 		// Run whatever command came through
+
+		/* First check if the process is in the foreground or background
+		 If the final char is not & or there isn't a space before it (making
+		 it a separate word), it runs in the foreground.	*/
+		if (command[numEnt-2] != '&' || command[numEnt-3] != ' ') {
+			bg = 0;
+		} else {
+			bg = 1;
+		}				
+	
+
 		spawnid = fork();
 		switch (spawnid) {
 			case -1:
@@ -102,15 +151,13 @@ while(1) {	// Keep asking for commands until exit
 				exit(1);
 				break;
 			case 0:	// Child process
-
-				/*
- 				Check for redirection. strrchr locates the last occurence of a redirection
+				/* Check for redirection. strrchr locates the last occurence of a redirection
 				character (incase they're used incidientally in argument names) and,
 				after some pointer arithmatic,  verifies that it's a separate word by
 				checking the chars before and after it. Then, pull the actual destination/source
 				from the command string.
-				Commences redirection.
-				*/
+				If a destination is not specified and it runs in the background, redirect
+				to dev/null.	*/
 				
 				// Check for input redirection
 				if (strrchr(command, '<') != NULL) {
@@ -121,10 +168,16 @@ while(1) {	// Keep asking for commands until exit
 						int srcFD = open(fileName, O_RDONLY);
 						if (srcFD == -1) {
 							printf("File not found\n");
+							fflush(stdout);
 							exit(1);
 						}
 						dup2(srcFD, 0);	// Redirect stdin to the specified file.
 					}
+				} else if (bg == 1) {
+					// If process is run in background with no other redirection,
+					// redirect to dev/null
+					int devNull = open("/dev/null", O_RDONLY);
+					dup2(devNull, 0);
 				}
 
 				// Check for output redirection
@@ -136,24 +189,28 @@ while(1) {	// Keep asking for commands until exit
 						int destFD = open(fileName, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 						if (destFD == -1) {
 							printf("Error writing file\n");
+							fflush(stdout);
 							exit(1);
 						}
 						dup2(destFD, 1);
 					}
+				} else if (bg == 1) {
+					int devNull = open("/dev/null", O_WRONLY);
+					dup2(devNull, 1);
 				}
 
 
 				// Run exec
 				execvp(argArr[0], argArr);
 				printf("Error, command not found.\n");
+				fflush(stdout);
 				exit(1);
 				break;
 			default:
-				// First check if the process is in the foreground or background
-				// If the final char is not & or there isn't a space before it (making
-				// it a separate word), it runs in the foreground and the shell
-				// must wait.
-				if (command[numEnt-2] != '&' || command[numEnt-3] != ' ') {
+				// First check if the process is in the foreground or background.
+				// Wait if it runs in the foreground.
+				// Print the process id if it's in the background and add to bgpid array
+				if (bg == 0) {
 					waitpid(spawnid, &childExitMethod, 0);
 					if(WIFEXITED(childExitMethod)){
 						exitStatus = WEXITSTATUS(childExitMethod);
@@ -161,8 +218,14 @@ while(1) {	// Keep asking for commands until exit
 					} else {
 						termSignal = WTERMSIG(childExitMethod);
 					}
-				} else {
-					// run in background
+				} else {	// Child is in the background, keep going.
+					// Add child PID to array of child PIDs
+					pidArr[numBG] = spawnid;
+					numBG++;
+
+					printf("background pid is %d\n", spawnid);
+					fflush(stdout);
+
 				}
 				break;
 		}
