@@ -234,11 +234,13 @@ while(1) {	// Keep asking for commands until exit
 						printf("(Normal Wait) terminated by signal %d\n", termSignal);
 						fflush(stdout);
 					}
+
 					waiting = 0;	// Finished waiting
 					if (sigRec == 1) {
 						sigRec = 0;	// Reset now that the signal is received
-						raise(24);	// Resend TSTP
+						raise(SIGTSTP);	// Resend TSTP
 					}
+
 				} else {	// Child is in the background, keep going.
 					// Add child PID to array of child PIDs
 					pidArr[numBG] = spawnid;
@@ -376,7 +378,7 @@ int ReapChildren(pid_t pidArr[], int numBG) {
 }
 
 void catchSIGTSTP(int signo) {
-	// Handle fg waiting
+	// Handle foreground waiting
 	if (waiting == 1) {
 		sigRec = 1;	// Let the main know TSTP was sent
 	} else {
