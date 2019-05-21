@@ -1,5 +1,5 @@
 /* Author: Brad Powell
- * Date: 5/16/2019
+ * Date: 5/21/2019
  * CS344_400 Spring 2019
  * smallsh is a small shell. It has a few built in commands, uses fork/exec to run other programs, and
  * handles some signals.
@@ -69,13 +69,9 @@ void main() {
 
 while(1) {	// Keep asking for commands until exit
 	freed = 0;	// Command starts unfreed
-	spawnid = -5;	// No foreground processes (used with signal handling)
-
 
 	// Check for background children for reaping.
 	numBG = ReapChildren(pidArr, numBG); 
-
-
 
 	// Get input, guarding against signals.
 	while(1) {
@@ -92,7 +88,7 @@ while(1) {	// Keep asking for commands until exit
 	}
 
 	
-	// Ignore empty or commented lines
+	// Ignore empty or commented lines, returning to top of loop
 	if (numEnt == 1 || command[0] == '#')
 		continue;
 	// Remove newline from command
@@ -221,7 +217,7 @@ while(1) {	// Keep asking for commands until exit
 				fflush(stdout);
 				exit(1);
 				break;
-			default:
+			default:// Parent process
 				// First check if the process is in the foreground or background.
 				// Wait if it runs in the foreground.
 				// Print the process id if it's in the background and add to bgpid array
@@ -388,6 +384,10 @@ int ReapChildren(pid_t pidArr[], int numBG) {
 	return numBG;	// Return the new number of background pids in array.
 }
 
+/* Function to catch Ctrl-Z (TSTP). It first checks if the parent is waiting on a foreground process and, if so
+ * leaves a message so the parent knows to call the function back. When the parent is free, it displays a
+ * message about entering or exiting foreground-only mode.
+ */
 void catchSIGTSTP(int signo) {
 	// Handle foreground waiting
 	if (waiting == 1) {
@@ -403,12 +403,7 @@ void catchSIGTSTP(int signo) {
 			char* message = "Exiting foreground-only mode\n";
 			write(STDOUT_FILENO, message, 29);
 		}
-
-
+		fflush(stdout);
 	}
-
-
-
 }
-
 
