@@ -20,6 +20,7 @@ int ParseArgs(char**, char*);		// Accepts array for arguments and string to pars
 void RedirectFile(char*, char[], int);	// Parses the file name for redirection.
 void ExpandPID(char**, char*, int*);	// Function to expand $$ to PID
 int ReapChildren(pid_t[], int);		// Waits for background processes
+void catchSIGTSTP(int);			// Handles SIGTSTP
 
 void main() {
 	// Variables for getting user input
@@ -35,7 +36,7 @@ void main() {
 	char* argArr[512];	// Array for arguments, maximum number of arguments is 512
 	int numArgs;		// Holds the number of arguments
 
-	// Variables for status command
+	// Variable for status command
 	int	exitStatus = 0,
 		termSignal = 0;
 
@@ -50,8 +51,23 @@ void main() {
 	// Variables for file redirection
 	char fileName[100];
 
+	// Set up signal handling
+	struct sigaction default_action = {0}, ignore_action = {0}, SIGTSTP_action = {0};
+
+	default_action.sa_handler = SIG_DFL;
+	ignore_action.sa_handler = SIG_IGN;
+
+	SIGTSTP_action.sa_handler = catchSIGTSTP;
+	sigfillset(&SIGTSTP_action.sa_mask);
+	SIGTSTP_action.sa_flags = 0;
+
+	// Parent ignores SIGINT and handles terminated foreground child with childExitMethod
+	sigaction(SIGINT, &ignore_action, NULL);
+	sigaction(SIGTSTP, &SIGTSTP_action, NULL);
+
 while(1) {	// Keep asking for commands until exit
 	freed = 0;	// Command starts unfreed
+	spawnid = -5;	// No foreground processes (used with signal handling)
 
 	// Check for background children for reaping.
 	numBG = ReapChildren(pidArr, numBG); 
@@ -59,8 +75,18 @@ while(1) {	// Keep asking for commands until exit
 	// Display command prompt and wait for the user
 	printf(": ");
 	fflush(stdout);
+
+	// Get input, guarding against signals.
+	while(1) {
+		numEnt = getline(&command, &buffer, stdin);
+		if (numEnt == -1) {
+			clearerr(stdin);
+		} else {
+			break;
+		}
+	}
+
 	
-	numEnt = getline(&command, &buffer, stdin);
 	// Ignore empty or commented lines
 	if (numEnt == 1 || command[0] == '#')
 		continue;
@@ -101,7 +127,7 @@ while(1) {	// Keep asking for commands until exit
 			printf("exit value %d\n", exitStatus);
 			fflush(stdout);
 		} else {
-			printf("terminated by signal %d\n", termSignal);
+			printf("(Status) terminated by signal %d\n", termSignal);
 			fflush(stdout);
 		}
 	} else {
@@ -123,7 +149,17 @@ while(1) {	// Keep asking for commands until exit
 				perror("Fork failed");
 				exit(1);
 				break;
-			case 0:	// Child process
+			case 0: ;	// Child process
+
+				// Set child processes to ignore SIGTSTP
+				sigaction(SIGTSTP, &ignore_action, NULL);
+
+				// Foreground children do not ignore SIGINT
+				// Background children ignoring SIGINT set up at beginning of program
+				if (bg == 0) {
+					sigaction(SIGINT, &default_action, NULL);
+				}
+
 				/* Check for redirection. strrchr locates the last occurence of a redirection
 				character (incase they're used incidientally in argument names) and,
 				after some pointer arithmatic,  verifies that it's a separate word by
@@ -190,6 +226,8 @@ while(1) {	// Keep asking for commands until exit
 						termSignal = 0;
 					} else {
 						termSignal = WTERMSIG(childExitMethod);
+						printf("(Normal Wait) terminated by signal %d\n", termSignal);
+						fflush(stdout);
 					}
 				} else {	// Child is in the background, keep going.
 					// Add child PID to array of child PIDs
@@ -310,7 +348,7 @@ int ReapChildren(pid_t pidArr[], int numBG) {
 				fflush(stdout);
 			} else {
 				deathNum = WTERMSIG(childExitMethod);
-				printf("terminated by signal %d\n", deathNum);
+				printf("(ReapChildren) terminated by signal %d\n", deathNum);
 				fflush(stdout);
 			}
 		
@@ -325,6 +363,10 @@ int ReapChildren(pid_t pidArr[], int numBG) {
 	}
 
 	return numBG;	// Return the new number of background pids in array.
+}
+
+void catchSIGTSTP(int signo) {
+
 }
 
 
