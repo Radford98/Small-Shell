@@ -61,7 +61,7 @@ void main() {
 
 	SIGTSTP_action.sa_handler = catchSIGTSTP;
 	sigfillset(&SIGTSTP_action.sa_mask);
-	SIGTSTP_action.sa_flags = SA_RESTART; // If this comes during a wait, resuming waiting
+	SIGTSTP_action.sa_flags = 0;
 
 	// Parent ignores SIGINT and handles terminated foreground child with childExitMethod
 	sigaction(SIGINT, &ignore_action, NULL);
@@ -75,12 +75,14 @@ while(1) {	// Keep asking for commands until exit
 	// Check for background children for reaping.
 	numBG = ReapChildren(pidArr, numBG); 
 
-	// Display command prompt and wait for the user
-	printf(": ");
-	fflush(stdout);
+
 
 	// Get input, guarding against signals.
 	while(1) {
+		// Display command prompt and wait for the user
+		printf(": ");
+		fflush(stdout);
+
 		numEnt = getline(&command, &buffer, stdin);
 		if (numEnt == -1) {
 			clearerr(stdin);
@@ -130,7 +132,7 @@ while(1) {	// Keep asking for commands until exit
 			printf("exit value %d\n", exitStatus);
 			fflush(stdout);
 		} else {
-			printf("(Status) terminated by signal %d\n", termSignal);
+			printf("terminated by signal %d\n", termSignal);
 			fflush(stdout);
 		}
 	} else {
@@ -224,6 +226,10 @@ while(1) {	// Keep asking for commands until exit
 				// Wait if it runs in the foreground.
 				// Print the process id if it's in the background and add to bgpid array
 				if (bg == 0) {
+					// If TSTP comes during a wait, resuming waiting
+					SIGTSTP_action.sa_flags = SA_RESTART; 
+					sigaction(SIGTSTP, &SIGTSTP_action, NULL);
+
 					waiting = 1;	// Set to ignore SIGTSTP until fg child is finished
 					waitpid(spawnid, &childExitMethod, 0);
 					if(WIFEXITED(childExitMethod)){
@@ -231,9 +237,14 @@ while(1) {	// Keep asking for commands until exit
 						termSignal = 0;
 					} else {
 						termSignal = WTERMSIG(childExitMethod);
-						printf("(Normal Wait) terminated by signal %d\n", termSignal);
+						printf("terminated by signal %d\n", termSignal);
 						fflush(stdout);
 					}
+
+					// Reset signal handler for getline
+					SIGTSTP_action.sa_flags = 0;
+					sigaction(SIGTSTP, &SIGTSTP_action, NULL);
+
 
 					waiting = 0;	// Finished waiting
 					if (sigRec == 1) {
@@ -360,7 +371,7 @@ int ReapChildren(pid_t pidArr[], int numBG) {
 				fflush(stdout);
 			} else {
 				deathNum = WTERMSIG(childExitMethod);
-				printf("(ReapChildren) terminated by signal %d\n", deathNum);
+				printf("terminated by signal %d\n", deathNum);
 				fflush(stdout);
 			}
 		
@@ -385,12 +396,12 @@ void catchSIGTSTP(int signo) {
 		// Change between normal and foreground only
 		if (fgOnly == 0) {
 			fgOnly = 1;
-			char* message = "Entering foreground-only mode (& is now ignored)\n: ";
-			write(STDOUT_FILENO, message, 51);
+			char* message = "Entering foreground-only mode (& is now ignored)\n";
+			write(STDOUT_FILENO, message, 49);
 		} else {
 			fgOnly = 0;
-			char* message = "Exiting foreground-only mode\n: ";
-			write(STDOUT_FILENO, message, 31);
+			char* message = "Exiting foreground-only mode\n";
+			write(STDOUT_FILENO, message, 29);
 		}
 
 
